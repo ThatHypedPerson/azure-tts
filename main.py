@@ -17,24 +17,44 @@ speech_config = speechsdk.SpeechConfig(subscription=os.environ.get('SPEECH_KEY')
 audio_config = speechsdk.audio.AudioOutputConfig(use_default_speaker=True)
 speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
 
-# Choose a random voice and style for that voice.
-speech_synthesis_voice_name=f"en-US-{random.choice(voices)}Neural"
-speech_synthesis_style_name=random.choice(styles)
+def genSSML(text, ssml = None):
+	if ssml is None:
+		ssml = "<speak version='1.0' xml:lang='en-US' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts'>"
+		if text.find("(") != 0:
+			# fill text with a random voice and style
+			voice = random.choice(voices)
+			style = random.choice(styles)
+			text = f"({voice})({style}){text}"
+		return ssml + genSSML(text, ssml) + "</speak>"
+	
+	# check if modifier is in front
+	if text.find("(") != 0:
+		if text.find(")") == -1: # no modifier
+			return text
+		else:
+			return text[:text.find("(")] + genSSML(text[text.find("("):], ssml)
+		
+	# check for new voice/style
+	modifier = text[1: text.find(")")]
+	if modifier in voices:
+		return genVoice(text[text.find(")") + 1:], ssml, modifier)
+	elif modifier in styles:
+		return genStyle(text[text.find(")") + 1:], ssml, modifier)
+	else:
+		if text.find("(", 1) == -1: # no more possible modifiers
+			return text
+		return text[:text.find("(", 1)] + genSSML(text[text.find("(", 1):], ssml)
 
-ssml = """
-<speak version='1.0' xml:lang='en-US' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts'>
-	<voice name='{}'>
-		<mstts:express-as style="{}">
-            This is a simple test message.
-        </mstts:express-as>
-	</voice>
-</speak>
-""".format(speech_synthesis_voice_name, speech_synthesis_style_name)
+def genVoice(text, ssml, voice): # possibly add current style if voice changes
+	return f"<voice name='{f'en-US-{voice}Neural'}'>" + genSSML(text, ssml) + "</voice>"
+
+def genStyle(text, ssml, style):
+	return f"<mstts:express-as style='{style}'>" + genSSML(text, ssml) + "</mstts:express-as>"
+
+ssml = genSSML("(Jenny)(angry)This is a simple test message.")
 
 # Synthesize the SSML
 print("SSML to synthesize: \r\n{}".format(ssml))
-print("Voice chosen:", speech_synthesis_voice_name)
-print("Style chosen:", speech_synthesis_style_name)
 speech_synthesis_result = speech_synthesizer.speak_ssml_async(ssml).get()
 
 if speech_synthesis_result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:

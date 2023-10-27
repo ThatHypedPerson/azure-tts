@@ -1,0 +1,10 @@
+angry
+cheerful
+excited
+friendly
+hopeful
+sad
+shouting
+terrified
+unfriendly
+whispering

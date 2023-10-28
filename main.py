@@ -109,16 +109,21 @@ def splitStyle(split_text):
 def processVoice(voice, text):
 	voice = voice[1:-1].title()
 	voice = f"en-US-{voice}Neural"
-	ssml = f"\t<voice name='{voice}'>\n"
-	return ssml + processStyle(text) + "\t</voice>\n"
+	return processStyle(voice, text) 
 
-def processStyle(text):
+def processStyle(voice, text):
 	ssml = ""
 	for i in range(len(text) - 1):
 		if text[i] in styles and text[i+1] not in styles:
+			# add voice element (weird azure interaction if added before)
+			ssml += f"\t<voice name='{voice}'>\n"
+			
+			# add style element
 			ssml += f"\t\t<mstts:express-as style='{text[i][1:-1]}'>\n"
 			ssml += f"\t\t\t{text[i+1]}\n"
 			ssml += "\t\t</mstts:express-as>\n"
+
+			ssml += "\t</voice>\n"
 	return ssml
 
 print(generateMessage("(excited)test(Jenny)(sad)test (Davis) test(Jane)"))

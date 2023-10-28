@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 
-# read local environment variables
 import os
+import re
+
 from dotenv import load_dotenv
 load_dotenv()
 
-import re
 # Load usable voices (make into a key-pair for more choices?)
 import random
-voices = [f"({voice.lower()})" for voice in open("voices.txt").read().splitlines()]
-styles = [f"({style})" for style in open("styles.txt").read().splitlines()]
+voices = [f"({voice.lower()})" for voice in open("reference/voices.txt").read().splitlines()]
+styles = [f"({style})" for style in open("reference/styles.txt").read().splitlines()]
 
 import azure.cognitiveservices.speech as speechsdk
 
@@ -126,5 +126,7 @@ def processStyle(voice, text):
 			ssml += "\t</voice>\n"
 	return ssml
 
-print(generateMessage("(excited)test(Jenny)(sad)test (Davis) test(Jane)"))
-print(generateMessage("this is a normal message"))
+# debug testing of some cases (testing doesn't exist to me :])
+if __name__ == "__main__":
+	print(generateMessage("(excited)test(Jenny)(sad)test (Davis) test(Jane)"))
+	print(generateMessage("this is a normal message"))

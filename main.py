@@ -5,10 +5,11 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
+import re
 # Load usable voices (make into a key-pair for more choices?)
 import random
-voices = open("voices.txt").read().splitlines()
-styles = open("styles.txt").read().splitlines()
+voices = [f"({voice.lower()})" for voice in open("voices.txt").read().splitlines()]
+styles = [f"({style})" for style in open("styles.txt").read().splitlines()]
 
 import azure.cognitiveservices.speech as speechsdk
 
@@ -17,51 +18,108 @@ speech_config = speechsdk.SpeechConfig(subscription=os.environ.get('SPEECH_KEY')
 audio_config = speechsdk.audio.AudioOutputConfig(use_default_speaker=True)
 speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
 
-def genSSML(text, ssml = None):
-	if ssml is None:
-		ssml = "<speak version='1.0' xml:lang='en-US' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts'>"
-		if text.find("(") != 0:
-			# fill text with a random voice and style
-			voice = random.choice(voices)
-			style = random.choice(styles)
-			text = f"({voice})({style}){text}"
-		return ssml + genSSML(text, ssml) + "</speak>"
+def playMessage(ssml):
+	speech_synthesis_result = speech_synthesizer.speak_ssml_async(ssml).get()
+
+	if speech_synthesis_result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+		print("speech complete")
+	elif speech_synthesis_result.reason == speechsdk.ResultReason.Canceled:
+		cancellation_details = speech_synthesis_result.cancellation_details
+		print("Speech synthesis canceled: {}".format(cancellation_details.reason))
+		if cancellation_details.reason == speechsdk.CancellationReason.Error:
+			if cancellation_details.error_details:
+				print("Error details: {}".format(cancellation_details.error_details))
+	return
+
+def generateMessage(text):
+	ssml = "<speak version='1.0' xml:lang='en-US' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts'>\n"
+	split = splitMessage(text)
+
+	for i in range(len(split) - 1):
+		if type(split[i]) == str and split[i].lower() in voices and len(split[i+1]) > 1:
+			ssml += processVoice(split[i], split[i+1])
 	
-	# check if modifier is in front
-	if text.find("(") != 0:
-		if text.find(")") == -1: # no modifier
-			return text
-		else:
-			return text[:text.find("(")] + genSSML(text[text.find("("):], ssml)
-		
-	# check for new voice/style
-	modifier = text[1: text.find(")")]
-	if modifier in voices:
-		return genVoice(text[text.find(")") + 1:], ssml, modifier)
-	elif modifier in styles:
-		return genStyle(text[text.find(")") + 1:], ssml, modifier)
+	ssml += "</speak>"
+
+	playMessage(ssml)
+
+	# return only for debugging
+	return ssml
+
+# many parts here provided by ChatGPT, but it works so ¯\_(ツ)_/¯
+def splitMessage(text):
+	split_text = re.findall(r'\([^)]+\)|\w+', text) # ChatGPT regex
+	
+	# check if any "voice" is found in the message
+	if any(any(voice in word.lower() for voice in voices) for word in split_text):
+		# check if the first element is a voice, otherwise move first voice to front
+		if split_text[0].lower() not in voices:
+			for word in split_text:
+				if word.lower() in voices:
+					split_text.remove(word)
+					split_text.insert(0, word)
+					break
+	# add random voice to front if none are found
 	else:
-		if text.find("(", 1) == -1: # no more possible modifiers
-			return text
-		return text[:text.find("(", 1)] + genSSML(text[text.find("(", 1):], ssml)
+		split_text.insert(0, random.choice(voices))
+	return splitVoice(split_text)
 
-def genVoice(text, ssml, voice): # possibly add current style if voice changes
-	return f"<voice name='{f'en-US-{voice}Neural'}'>" + genSSML(text, ssml) + "</voice>"
+# split list into segments based on "voice"
+def splitVoice(split_text):
+	temp = []
+	new_split = []
+	
+	for word in split_text:
+		if word.lower() in voices:
+			if new_split:
+				temp = splitStyle(temp)
+				new_split.append(temp)
+				temp = []
+			new_split.append(word)
+		else:
+			temp.append(word)
+	if temp:
+		temp = splitStyle(temp)
+		new_split.append(temp)
+	
+	return new_split
 
-def genStyle(text, ssml, style):
-	return f"<mstts:express-as style='{style}'>" + genSSML(text, ssml) + "</mstts:express-as>"
+# split smaller list into segments based on "style"
+def splitStyle(split_text):
+	temp = ""
+	new_split = []
 
-ssml = genSSML("(Jenny)(angry)This is a simple test message.")
+	# add random style if first element isn't a style
+	if split_text[0] not in styles:
+		split_text.insert(0, random.choice(styles))
 
-# Synthesize the SSML
-print("SSML to synthesize: \r\n{}".format(ssml))
-speech_synthesis_result = speech_synthesizer.speak_ssml_async(ssml).get()
+	for word in split_text:
+		if word.lower() in styles:
+			if new_split:
+				new_split.append(temp)
+				temp = ""
+			new_split.append(word)
+		else:
+			temp += " " + word # space doesn't matter in audio request
+	if temp:
+		new_split.append(temp)
+	
+	return new_split
 
-if speech_synthesis_result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-	print("speech complete")
-elif speech_synthesis_result.reason == speechsdk.ResultReason.Canceled:
-	cancellation_details = speech_synthesis_result.cancellation_details
-	print("Speech synthesis canceled: {}".format(cancellation_details.reason))
-	if cancellation_details.reason == speechsdk.CancellationReason.Error:
-		if cancellation_details.error_details:
-			print("Error details: {}".format(cancellation_details.error_details))
+def processVoice(voice, text):
+	voice = voice[1:-1].title()
+	voice = f"en-US-{voice}Neural"
+	ssml = f"\t<voice name='{voice}'>\n"
+	return ssml + processStyle(text) + "\t</voice>\n"
+
+def processStyle(text):
+	ssml = ""
+	for i in range(len(text) - 1):
+		if text[i] in styles and text[i+1] not in styles:
+			ssml += f"\t\t<mstts:express-as style='{text[i][1:-1]}'>\n"
+			ssml += f"\t\t\t{text[i+1]}\n"
+			ssml += "\t\t</mstts:express-as>\n"
+	return ssml
+
+print(generateMessage("(excited)test(Jenny)(sad)test (Davis) test(Jane)"))
+print(generateMessage("this is a normal message"))

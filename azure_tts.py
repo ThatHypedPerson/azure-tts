@@ -22,17 +22,21 @@ import azure.cognitiveservices.speech as speechsdk
 speech_config = speechsdk.SpeechConfig(subscription=os.environ.get('SPEECH_KEY'), region=os.environ.get('SPEECH_REGION'))
 
 def playMessage(ssml):
+	# speech creation
 	filename = f"tts/{time.time()}.wav"
 	audio_config = speechsdk.audio.AudioOutputConfig(filename=filename)
 	speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
 	speech_synthesis_result = speech_synthesizer.speak_ssml_async(ssml).get()
 
+	# process length of tts to know when to delete it
 	file_time = time.strptime(str(speech_synthesis_result.audio_duration),'%H:%M:%S.%f')
 	file_seconds = datetime.timedelta(	hours=file_time.tm_hour,
 								   		minutes=file_time.tm_min,
 										seconds=file_time.tm_sec).total_seconds()
+	
 	if speech_synthesis_result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
 		try:
+			# speech playback
 			tts = simpleaudio.WaveObject.from_wave_file(filename)
 			tts.play()
 			print("speech processed")
@@ -51,7 +55,7 @@ def playMessage(ssml):
 def delete_file(filename):
 	try:
 		os.remove(filename)
-		print(f"File '{filename}' has been deleted.")
+		# print(f"File '{filename}' has been deleted.")
 	except FileNotFoundError:
 		print(f"File '{filename}' not found, so it couldn't be deleted.")
 
@@ -93,7 +97,7 @@ def splitMessage(text):
 		split_text.insert(0, random.choice(voices))
 	return splitVoice(split_text)
 
-# split list into segments based on "voice"
+# Split list into segments based on "voice"
 def splitVoice(split_text):
 	temp = []
 	new_split = []
@@ -113,7 +117,7 @@ def splitVoice(split_text):
 	
 	return new_split
 
-# split smaller list into segments based on "style"
+# Split smaller list into segments based on "style"
 def splitStyle(split_text):
 	temp = ""
 	new_split = []
@@ -135,11 +139,13 @@ def splitStyle(split_text):
 	
 	return new_split
 
+# Format the voice for the Azure request
 def processVoice(voice, text):
 	voice = voice[1:-1].title()
 	voice = f"en-US-{voice}Neural"
 	return processStyle(voice, text) 
 
+# Generate SSML around style tags
 def processStyle(voice, text):
 	ssml = ""
 	for i in range(len(text) - 1):

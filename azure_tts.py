@@ -29,7 +29,6 @@ def playMessage(ssml):
 		if cancellation_details.reason == speechsdk.CancellationReason.Error:
 			if cancellation_details.error_details:
 				print("Error details: {}".format(cancellation_details.error_details))
-	return
 
 def generateMessage(text):
 	ssml = "<speak version='1.0' xml:lang='en-US' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts'>\n"

@@ -11,18 +11,35 @@ import random
 voices = [f"({voice.lower()})" for voice in open("reference/voices.txt").read().splitlines()]
 styles = [f"({style})" for style in open("reference/styles.txt").read().splitlines()]
 
-import azure.cognitiveservices.speech as speechsdk
+# Set up Audio Playback
+import time
+import datetime
+import simpleaudio
+import threading		# file deletion
 
 # Inititalize Speech Synthesizer
+import azure.cognitiveservices.speech as speechsdk
 speech_config = speechsdk.SpeechConfig(subscription=os.environ.get('SPEECH_KEY'), region=os.environ.get('SPEECH_REGION'))
-audio_config = speechsdk.audio.AudioOutputConfig(use_default_speaker=True)
-speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
 
 def playMessage(ssml):
+	filename = f"tts/{time.time()}.wav"
+	audio_config = speechsdk.audio.AudioOutputConfig(filename=filename)
+	speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
 	speech_synthesis_result = speech_synthesizer.speak_ssml_async(ssml).get()
 
+	file_time = time.strptime(str(speech_synthesis_result.audio_duration),'%H:%M:%S.%f')
+	file_seconds = datetime.timedelta(	hours=file_time.tm_hour,
+								   		minutes=file_time.tm_min,
+										seconds=file_time.tm_sec).total_seconds()
 	if speech_synthesis_result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-		print("speech complete")
+		try:
+			tts = simpleaudio.WaveObject.from_wave_file(filename)
+			tts.play()
+			print("speech processed")
+		except Exception as e:
+			print("speech failed")
+			print(e)
+		schedule_file_deletion(filename, file_seconds)
 	elif speech_synthesis_result.reason == speechsdk.ResultReason.Canceled:
 		cancellation_details = speech_synthesis_result.cancellation_details
 		print("Speech synthesis canceled: {}".format(cancellation_details.reason))
@@ -30,6 +47,19 @@ def playMessage(ssml):
 			if cancellation_details.error_details:
 				print("Error details: {}".format(cancellation_details.error_details))
 
+# Deletion logic provided by ChatGPT
+def delete_file(filename):
+	try:
+		os.remove(filename)
+		print(f"File '{filename}' has been deleted.")
+	except FileNotFoundError:
+		print(f"File '{filename}' not found, so it couldn't be deleted.")
+
+def schedule_file_deletion(filename, delay_seconds):
+	timer = threading.Timer(delay_seconds + 1, delete_file, args=(filename,))
+	timer.start()
+
+# Generate SSML for Speech Synthesis
 def generateMessage(text):
 	ssml = "<speak version='1.0' xml:lang='en-US' xmlns='http://www.w3.org/2001/10/synthesis' xmlns:mstts='http://www.w3.org/2001/mstts'>\n"
 	split = splitMessage(text)
@@ -129,3 +159,4 @@ def processStyle(voice, text):
 if __name__ == "__main__":
 	print(generateMessage("(excited)test(Jenny)(sad)test (Davis) test(Jane)"))
 	print(generateMessage("this is a normal message"))
+	time.sleep(10) # allow all files to be played and deleted
